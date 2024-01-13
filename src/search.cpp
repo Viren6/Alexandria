@@ -618,7 +618,8 @@ moves_loop:
             depthReduction = reductions[isQuiet][depth][movesSearched];
 
             // Reduce more if we aren't in a pv node
-            depthReduction += !ttPv;
+            if(!ttPv)
+                depthReduction += 1 + (ttScore < alpha); 
 
             // Fuck
             depthReduction += 2 * cutNode;
