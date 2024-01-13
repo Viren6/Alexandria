@@ -619,7 +619,7 @@ moves_loop:
 
             // Reduce more if we aren't in a pv node
             if(!ttPv)
-                depthReduction += 1 + (ttScore <= alpha && ttHit); 
+                depthReduction += 1 + (ttScore <= alpha); 
 
             // Fuck
             depthReduction += 2 * cutNode;
