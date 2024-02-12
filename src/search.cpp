@@ -567,7 +567,7 @@ moves_loop:
                     if (   !pvNode
                         &&  singularScore < singularBeta - 17
                         &&  ss->doubleExtensions <= 11) {
-                        extension = 2 + (!isTactical(ttMove) && singularScore < singularBeta - 100);
+                        extension = 2 + (!isTactical(ttMove) && singularScore < singularBeta - 100); 
                         ss->doubleExtensions = (ss - 1)->doubleExtensions + 1;
                     }
                 }
