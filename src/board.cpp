@@ -291,54 +291,100 @@ Bitboard GetPieceBB(const S_Board* pos, const int piecetype) {
     return pos->GetPieceColorBB(piecetype, WHITE) | pos->GetPieceColorBB(piecetype, BLACK);
 }
 
+bool oppCanWinMaterial(const S_Board* pos, const int side) {
+    Bitboard occ = pos->Occupancy(BOTH);
+    Bitboard  us = pos->Occupancy(side);
+    Bitboard oppPawns = pos->GetPieceColorBB(PAWN, side ^ 1);
+    Bitboard ourPawns = pos->GetPieceColorBB(PAWN, side);
+    while (oppPawns) {
+        int source_square = GetLsbIndex(oppPawns);
+        if (pawn_attacks[side ^ 1][source_square] & (us ^ ourPawns))
+            return true;
+
+        pop_lsb(ourPawns);
+    }
+
+    Bitboard oppKnights = pos->GetPieceColorBB(KNIGHT, side ^ 1);
+    Bitboard ourKnights = pos->GetPieceColorBB(KNIGHT, side);
+    Bitboard oppBishops = pos->GetPieceColorBB(BISHOP, side ^ 1);
+    Bitboard ourBishops = pos->GetPieceColorBB(BISHOP, side);
+    while (oppKnights) {
+        int source_square = GetLsbIndex(oppKnights);
+        if (knight_attacks[source_square] & (us ^ ourPawns ^ ourKnights ^ ourBishops))
+            return true;
+
+        pop_lsb(oppKnights);
+    }
+
+    while (oppBishops) {
+        int source_square = GetLsbIndex(oppBishops);
+        if (GetBishopAttacks(source_square, occ) & (us ^ ourPawns ^ ourKnights ^ ourBishops))
+            return true;
+
+        pop_lsb(oppBishops);
+    }
+
+    Bitboard oppRooks = pos->GetPieceColorBB(ROOK, side ^ 1);
+    Bitboard ourRooks = pos->GetPieceColorBB(ROOK, side);
+    while (oppRooks) {
+        int source_square = GetLsbIndex(oppRooks);
+        if (GetRookAttacks(source_square, occ) & (us ^ ourPawns ^ ourKnights ^ ourBishops ^ ourRooks))
+            return true;
+
+        pop_lsb(ourRooks);
+    }
+
+    return false;
+}
+
 Bitboard getThreats(const S_Board* pos, const int side) {
     // Take the occupancies of both positions, encoding where all the pieces on the board reside
     Bitboard occ = pos->Occupancy(BOTH);
     uint64_t threats = 0;
 
     // Get Pawn attacks
-    Bitboard pawns = pos->GetPieceColorBB(PAWN, pos->side);
+    Bitboard pawns = pos->GetPieceColorBB(PAWN, side);
     while (pawns) {
         int source_square = GetLsbIndex(pawns);
         threats |= pawn_attacks[side][source_square];
-        pop_bit(pawns, source_square);
+        pop_lsb(pawns);
     }
 
     // Get Knight attacks
-    Bitboard knights = pos->GetPieceColorBB(KNIGHT, pos->side);
+    Bitboard knights = pos->GetPieceColorBB(KNIGHT, side);
     while (knights) {
         int source_square = GetLsbIndex(knights);
         threats |= knight_attacks[source_square];
-        pop_bit(knights, source_square);
+        pop_lsb(knights);
     }
 
     // Get Bishop attacks
-    Bitboard bishops = pos->GetPieceColorBB(BISHOP, pos->side);
+    Bitboard bishops = pos->GetPieceColorBB(BISHOP, side);
     while (bishops) {
         int source_square = GetLsbIndex(bishops);
         threats |= GetBishopAttacks(source_square, occ);
-        pop_bit(bishops, source_square);
+        pop_lsb(bishops);
     }
     // Get Rook attacks
-    Bitboard rooks = pos->GetPieceColorBB(ROOK, pos->side);
+    Bitboard rooks = pos->GetPieceColorBB(ROOK, side);
     while (rooks) {
         int source_square = GetLsbIndex(rooks);
         threats |= GetRookAttacks(source_square, occ);
-        pop_bit(rooks, source_square);
+        pop_lsb(rooks);
     }
     // Get Queen attacks
-    Bitboard queens = pos->GetPieceColorBB(QUEEN, pos->side);
+    Bitboard queens = pos->GetPieceColorBB(QUEEN, side);
     while (queens) {
         int source_square = GetLsbIndex(queens);
         threats |= GetQueenAttacks(source_square, occ);
-        pop_bit(queens, source_square);
+        pop_lsb(queens);
     }
     // Get King attacks
-    Bitboard king = pos->GetPieceColorBB(KING, pos->side);
+    Bitboard king = pos->GetPieceColorBB(KING, side);
     while (king) {
         int source_square = GetLsbIndex(king);
         threats |= king_attacks[source_square];
-        pop_bit(king, source_square);
+        pop_lsb(king);
     }
     return threats;
 }
@@ -386,7 +432,7 @@ Bitboard GetCheckersBB(const S_Board* pos, const int side) {
         while (checkingBishops) {
         int index = GetLsbIndex(checkingBishops);
         checkers |= (1ULL << index);
-        pop_bit(checkingBishops,index);
+        pop_lsb(checkingBishops);
         }
     }
     if (rook_mask) {
@@ -394,7 +440,7 @@ Bitboard GetCheckersBB(const S_Board* pos, const int side) {
         while (checkingrook) {
             int index = GetLsbIndex(checkingrook);
             checkers |= (1ULL << index);
-            pop_bit(checkingrook, index);
+            pop_lsb(checkingrook);
         }
         int index = GetLsbIndex(rook_mask);
         checkers |= (1ULL << index);
@@ -422,14 +468,14 @@ void UpdatePinMasks(S_Board* pos, const int side) {
         Bitboard possible_pin = RayBetween(kingSquare, index) | (1ULL << index);
         if (CountBits(possible_pin & pos->Occupancy(side)) == 1)
             bishop_pin |= possible_pin;
-        pop_bit(bishop_pin_mask, index);
+        pop_lsb(bishop_pin_mask);
     }
     while (rook_pin_mask) {
         int index = GetLsbIndex(rook_pin_mask);
         Bitboard possible_pin = RayBetween(kingSquare, index) | (1ULL << index);
         if (CountBits(possible_pin & pos->Occupancy(side)) == 1)
             rook_pin |= possible_pin;
-        pop_bit(rook_pin_mask, index);
+        pop_lsb(rook_pin_mask);
     }
     pos->pinHV = rook_pin;
     pos->pinD = bishop_pin;

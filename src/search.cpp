@@ -423,9 +423,9 @@ int Negamax(int alpha, int beta, int depth, const bool cutNode, S_ThreadData* td
 
     if (!pvNode) {
         // Reverse futility pruning
-        if (   depth < 9
-            && eval - 66 * (depth - improving) >= beta
-            && abs(eval) < mate_found)
+        if (   depth < 10
+            && abs(eval) < mate_found
+            && eval - (81 + 10 * oppCanWinMaterial(pos, pos->side)) * depth + 81 * improving >= beta)
             return eval;
 
         // Null move pruning: If our position is so good that we can give the opponent a free move and still fail high, 
@@ -681,12 +681,14 @@ moves_loop:
             if (score > alpha) {
                 bestMove = move;
 
-                // Update the pv table
-                pvTable->pvArray[ss->ply][ss->ply] = move;
-                for (int nextPly = ss->ply + 1; nextPly < pvTable->pvLength[ss->ply + 1]; nextPly++) {
-                    pvTable->pvArray[ss->ply][nextPly] = pvTable->pvArray[ss->ply + 1][nextPly];
+                if (pvNode) {
+                    // Update the pv table
+                    pvTable->pvArray[ss->ply][ss->ply] = move;
+                    for (int nextPly = ss->ply + 1; nextPly < pvTable->pvLength[ss->ply + 1]; nextPly++) {
+                        pvTable->pvArray[ss->ply][nextPly] = pvTable->pvArray[ss->ply + 1][nextPly];
+                    }
+                    pvTable->pvLength[ss->ply] = pvTable->pvLength[ss->ply + 1];
                 }
-                pvTable->pvLength[ss->ply] = pvTable->pvLength[ss->ply + 1];
 
                 if (score >= beta) {
                     // If the move that caused the beta cutoff is quiet we have a killer move

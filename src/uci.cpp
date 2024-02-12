@@ -205,6 +205,7 @@ bool ParseGo(const std::string& line, S_SearchINFO* info, S_Board* pos) {
 // main UCI loop
 void UciLoop(char** argv) {
     if (argv[1] && strncmp(argv[1], "bench", 5) == 0) {
+        tryhardmode = true;
         StartBench();
         return;
     }
@@ -216,6 +217,11 @@ void UciLoop(char** argv) {
     state threads_state = Idle;
     // print engine info
     std::cout << NAME << "\n";
+
+#ifdef TUNE
+    for (tunable_param param : tunableParams)
+        std::cout << param << "\n";
+#endif
 
     // main loop
     while (true) {
@@ -335,14 +341,14 @@ void UciLoop(char** argv) {
             std::cout << "option name Hash type spin default 16 min 1 max 262144 \n";
             std::cout << "option name Threads type spin default 1 min 1 max 256 \n";
 #ifdef TUNE
-            for (tunable_param param : tunable_params) {
+            for (tunable_param param : tunableParams) {
                 std::cout << "option name " + param.name;
                 std::cout << " type spin default ";
-                std::cout << param.curr_value;
+                std::cout << param.currValue;
                 std::cout << " min ";
-                std::cout << param.min_value;
+                std::cout << param.minValue;
                 std::cout << " max ";
-                std::cout << param.max_value << "\n";
+                std::cout << param.maxValue << "\n";
             }
 #endif
             std::cout << "uciok\n";
@@ -373,7 +379,9 @@ void UciLoop(char** argv) {
         }
 
         else if (input == "bench") {
+            tryhardmode = true;
             StartBench();
+            tryhardmode = false;
         }
 
         else if (input == "see") {
