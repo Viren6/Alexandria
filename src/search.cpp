@@ -1,3 +1,7 @@
+#include <algorithm>
+#include <cassert>
+#include <iostream>
+#include "bitboard.h"
 #include "search.h"
 #include "history.h"
 #include "piece_data.h"
@@ -9,12 +13,9 @@
 #include "threads.h"
 #include "movepicker.h"
 #include "ttable.h"
-#include <cassert>
 #include "movegen.h"
 #include "time_manager.h"
 #include "io.h"
-#include <iostream>
-#include <algorithm>
 
 // Returns true if the position is a 2-fold repetition, false otherwise
 static bool IsRepetition(const S_Board* pos, const bool pvNode) {
@@ -197,7 +198,7 @@ void RootSearch(int depth, S_ThreadData* td, S_UciOptions* options) {
     std::cout << "\n";
 }
 
-// SearchPosition is the actual function that handles the search, it sets up the variables needed for the search , calls the AspirationWindowSearch function and handles the console output
+// SearchPosition is the actual function that handles the search, it sets up the variables needed for the search, calls the AspirationWindowSearch function and handles the console output
 void SearchPosition(int startDepth, int finalDepth, S_ThreadData* td, S_UciOptions* options) {
     // variable used to store the score of the best move found by the search (while the move itself can be retrieved from the triangular PV table)
     int score = 0;
@@ -206,6 +207,7 @@ void SearchPosition(int startDepth, int finalDepth, S_ThreadData* td, S_UciOptio
     int previousBestMove = NOMOVE;
     // Clean the position and the search info to start search from a clean state
     ClearForSearch(td);
+    UpdateTableAge();
 
     // Call the Negamax function in an iterative deepening framework
     for (int currentDepth = startDepth; currentDepth <= finalDepth; currentDepth++) {
@@ -245,7 +247,7 @@ void SearchPosition(int startDepth, int finalDepth, S_ThreadData* td, S_UciOptio
 int AspirationWindowSearch(int prev_eval, int depth, S_ThreadData* td) {
     int score = 0;
     td->RootDepth = depth;
-    Search_stack stack[MAXDEPTH + 4], * ss = stack + 4;
+    Search_stack stack[MAXDEPTH + 4], *ss = stack + 4;
     // Explicitely clean stack
     for (int i = -4; i < MAXDEPTH; i++) {
         (ss + i)->move = NOMOVE;
@@ -306,7 +308,7 @@ template <bool pvNode>
 int Negamax(int alpha, int beta, int depth, const bool cutNode, S_ThreadData* td, Search_stack* ss) {
     // Extract data structures from ThreadData
     S_Board* pos = &td->pos;
-    Search_data* sd = &td->ss;
+    Search_data* sd = &td->sd;
     S_SearchINFO* info = &td->info;
     PvTable* pvTable = &td->pvTable;
 
@@ -357,7 +359,7 @@ int Negamax(int alpha, int beta, int depth, const bool cutNode, S_ThreadData* td
     const bool ttHit = excludedMove ? false : ProbeHashEntry(pos->GetPoskey(), &tte);
     const int ttScore = ttHit ? ScoreFromTT(tte.score, ss->ply) : SCORE_NONE;
     const int ttMove = ttHit ? MoveFromTT(pos, tte.move) : NOMOVE;
-    const uint8_t ttBound = ttHit ? BoundFromTT(tte.boundPV) : uint8_t(HFNONE);
+    const uint8_t ttBound = ttHit ? BoundFromTT(tte.ageBoundPV) : uint8_t(HFNONE);
     // If we found a value in the TT for this position, and the depth is equal or greater we can return it (pv nodes are excluded)
     if (   !pvNode
         &&  ttScore != SCORE_NONE
@@ -367,7 +369,7 @@ int Negamax(int alpha, int beta, int depth, const bool cutNode, S_ThreadData* td
             ||  ttBound == HFEXACT))
         return ttScore;
 
-    const bool ttPv = pvNode || (ttHit && FormerPV(tte.boundPV));
+    const bool ttPv = pvNode || (ttHit && FormerPV(tte.ageBoundPV));
 
     // IIR by Ed Schroder (That i find out about in Berserk source code)
     // http://talkchess.com/forum3/viewtopic.php?f=7&t=74769&sid=64085e3396554f0fba414404445b3120
@@ -411,12 +413,10 @@ int Negamax(int alpha, int beta, int depth, const bool cutNode, S_ThreadData* td
     // As we don't evaluate in check, we look for the first ply we weren't in check between 2 and 4 plies ago. If we find that
     // static eval has improved, or that we were in check both 2 and 4 plies ago, we set improving to true.
     if ((ss - 2)->staticEval != SCORE_NONE) {
-        if (ss->staticEval > (ss - 2)->staticEval)
-            improving = true;
+        improving = ss->staticEval > (ss - 2)->staticEval;
     }
     else if ((ss - 4)->staticEval != SCORE_NONE) {
-        if (ss->staticEval > (ss - 4)->staticEval)
-            improving = true;
+        improving = ss->staticEval > (ss - 4)->staticEval;
     }
     else
         improving = true;
@@ -502,7 +502,7 @@ moves_loop:
     // loop over moves within a movelist
     while ((move = NextMove(&mp, false)) != NOMOVE) {
 
-        if (move == excludedMove)
+        if (move == excludedMove || !IsLegal(pos, move))
             continue;
 
         totalMoves++;
@@ -581,7 +581,7 @@ moves_loop:
 
                 // If we are expecting a fail-high both based on search states from previous plies and based on TT bound
                 // but our TT move is not singular and our TT score is failing low, reduce the search depth
-                else if (ttScore <= alpha && cutNode)
+                else if (cutNode)
                     extension = -1;
             }
         }
@@ -658,7 +658,7 @@ moves_loop:
             score = -Negamax<false>(-alpha - 1, -alpha, newDepth, !cutNode, td, ss + 1);
         }
 
-        // PVS Search: Search the first move and every move that beat alpha with full depth and a full window
+        // PV Search: Search the first move and every move that beat alpha with full depth and a full window
         if (pvNode && (totalMoves == 1 || score > alpha))
             score = -Negamax<true>(-beta, -alpha, newDepth, false, td, ss + 1);
 
@@ -699,9 +699,9 @@ moves_loop:
                             ss->searchKillers[0] = bestMove;
                         }
 
-                        // Save CounterMoves
+                        // Save counterMoves
                         if (ss->ply >= 1)
-                            sd->CounterMoves[From((ss - 1)->move)][To((ss - 1)->move)] = move;
+                            sd->counterMoves[From((ss - 1)->move)][To((ss - 1)->move)] = move;
                     }
                     // Update the history heuristics based on the new best move
                     UpdateHistories(pos, sd, ss, depth + (eval <= alpha), bestMove, &quietMoves, &noisyMoves);
@@ -728,7 +728,7 @@ moves_loop:
 
     if (!excludedMove)
         StoreHashEntry(pos->posKey, MoveToTT(bestMove), ScoreToTT(bestScore, ss->ply), ss->staticEval, bound, depth, pvNode, ttPv);
-    // return best score
+
     return bestScore;
 }
 
@@ -736,7 +736,7 @@ moves_loop:
 template <bool pvNode>
 int Quiescence(int alpha, int beta, S_ThreadData* td, Search_stack* ss) {
     S_Board* pos = &td->pos;
-    Search_data* sd = &td->ss;
+    Search_data* sd = &td->sd;
     S_SearchINFO* info = &td->info;
     const bool inCheck = pos->checkers;
     // tte is an hashtable entry, it will store the values fetched from the TT
@@ -761,7 +761,7 @@ int Quiescence(int alpha, int beta, S_ThreadData* td, Search_stack* ss) {
     const bool ttHit = ProbeHashEntry(pos->GetPoskey(), &tte);
     const int ttScore = ttHit ? ScoreFromTT(tte.score, ss->ply) : SCORE_NONE;
     const int ttMove = ttHit ? MoveFromTT(pos, tte.move) : NOMOVE;
-    const uint8_t ttBound = ttHit ? BoundFromTT(tte.boundPV) : uint8_t(HFNONE);
+    const uint8_t ttBound = ttHit ? BoundFromTT(tte.ageBoundPV) : uint8_t(HFNONE);
     // If we found a value in the TT for this position, we can return it (pv nodes are excluded)
     if (   !pvNode
         &&  ttScore != SCORE_NONE
@@ -770,7 +770,7 @@ int Quiescence(int alpha, int beta, S_ThreadData* td, Search_stack* ss) {
             ||  ttBound == HFEXACT))
         return ttScore;
 
-    const bool ttPv = pvNode || (ttHit && FormerPV(tte.boundPV));
+    const bool ttPv = pvNode || (ttHit && FormerPV(tte.ageBoundPV));
 
     if (inCheck) {
         ss->staticEval = SCORE_NONE;
@@ -811,19 +811,21 @@ int Quiescence(int alpha, int beta, S_ThreadData* td, Search_stack* ss) {
     // loop over moves within the movelist
     while ((move = NextMove(&mp, bestScore > -MATE_FOUND)) != NOMOVE) {
 
+        if (!IsLegal(pos, move))
+            continue;
+
         totalMoves++;
 
         // Futility pruning. If static eval is far below alpha, only search moves that win material.
         if (    bestScore > -MATE_FOUND
             && !inCheck
             && !isPromo(move)
-            && !isEnpassant(move)
             &&  BoardHasNonPawns(pos, pos->side)) {
-                int futilityBase = ss->staticEval + 192;
-                if (futilityBase <= alpha && !SEE(pos, move, 1)) {
-                    bestScore = std::max(futilityBase, bestScore);
-                    continue;
-                }
+            const int futilityBase = ss->staticEval + 192;
+            if (futilityBase <= alpha && !SEE(pos, move, 1)) {
+                bestScore = std::max(futilityBase, bestScore);
+                continue;
+            }
         }
         // Speculative prefetch of the TT entry
         TTPrefetch(keyAfter(pos, move));
@@ -869,6 +871,5 @@ int Quiescence(int alpha, int beta, S_ThreadData* td, Search_stack* ss) {
 
     StoreHashEntry(pos->posKey, MoveToTT(bestmove), ScoreToTT(bestScore, ss->ply), ss->staticEval, bound, 0, pvNode, ttPv);
 
-    // return the best score we got
     return bestScore;
 }

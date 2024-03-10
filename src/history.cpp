@@ -18,27 +18,23 @@ void updateHHScore(const S_Board* pos, Search_data* sd, int move, int bonus) {
     // Scale bonus to fix it in a [-32768;32768] range
     const int scaledBonus = bonus - GetHHScore(pos, sd, move) * std::abs(bonus) / 32768;
     // Update move score
-    sd->searchHistory[pos->side][From(move)]
-        [To(move)] += scaledBonus;
+    sd->searchHistory[pos->side][From(move)][To(move)] += scaledBonus;
 }
 
 void updateCHScore(Search_data* sd, const Search_stack* ss, const int move, const int bonus) {
-    // Scale bonus to fix it in a [-32768;32768] range
+    // Average out the bonus across the 3 conthist entries
     const int scaledBonus = bonus - GetCHScore(sd, ss, move) * std::abs(bonus) / 32768;
     // Update move score
-    if (ss->ply > 0) {
-        sd->cont_hist[Piece((ss - 1)->move)][To((ss - 1)->move)]
-            [Piece(move)][To(move)] += scaledBonus;
-        // Score followup
-        if (ss->ply > 1) {
-            sd->cont_hist[Piece((ss - 2)->move)][To((ss - 2)->move)]
-                [Piece(move)][To(move)] += scaledBonus;
+    updateSingleCHScore(sd, ss, move, scaledBonus, 1);
+    updateSingleCHScore(sd, ss, move, scaledBonus, 2);
+    updateSingleCHScore(sd, ss, move, scaledBonus, 4);
+}
 
-            if (ss->ply > 3) {
-                sd->cont_hist[Piece((ss - 4)->move)][To((ss - 4)->move)]
-                    [Piece(move)][To(move)] += scaledBonus;
-            }
-        }
+void updateSingleCHScore(Search_data* sd, const Search_stack* ss, const int move, const int bonus, const int offset) {
+    if (ss->ply >= offset) {
+        const int previousMove = (ss - offset)->move;
+        const int scaledBonus = bonus - GetSingleCHScore(sd, ss, move, offset) * std::abs(bonus) / 65536;
+        sd->contHist[Piece(previousMove)][To(previousMove)][Piece(move)][To(move)] += scaledBonus;
     }
 }
 
@@ -53,30 +49,30 @@ void updateCapthistScore(const S_Board* pos, Search_data* sd, int move, int bonu
 }
 
 // Update all histories
-void UpdateHistories(const S_Board* pos, Search_data* sd, Search_stack* ss, const int depth, const int bestmove, const S_MOVELIST* quiet_moves, const S_MOVELIST* noisy_moves) {
+void UpdateHistories(const S_Board* pos, Search_data* sd, Search_stack* ss, const int depth, const int bestMove, const S_MOVELIST* quietMoves, const S_MOVELIST* noisyMoves) {
     const int bonus = history_bonus(depth);
-    if (!isTactical(bestmove))
+    if (!isTactical(bestMove))
     {
-        // increase bestmove HH and CH score
-        updateHHScore(pos, sd, bestmove, bonus);
-        updateCHScore(sd, ss, bestmove, bonus);
+        // increase bestMove HH and CH score
+        updateHHScore(pos, sd, bestMove, bonus);
+        updateCHScore(sd, ss, bestMove, bonus);
         // Loop through all the quiet moves
-        for (int i = 0; i < quiet_moves->count; i++) {
+        for (int i = 0; i < quietMoves->count; i++) {
             // For all the quiets moves that didn't cause a cut-off decrease the HH score
-            const int move = quiet_moves->moves[i].move;
-            if (move == bestmove) continue;
+            const int move = quietMoves->moves[i].move;
+            if (move == bestMove) continue;
             updateHHScore(pos, sd, move, -bonus);
             updateCHScore(sd, ss, move, -bonus);
         }
     }
     else {
-        // increase the bestmove Capthist score
-        updateCapthistScore(pos, sd, bestmove, bonus);
+        // increase the bestMove Capthist score
+        updateCapthistScore(pos, sd, bestMove, bonus);
     }
-    // For all the noisy moves that didn't cause a cut-off, even is the bestmove wasn't a noisy move, decrease the capthist score
-    for (int i = 0; i < noisy_moves->count; i++) {
-        const int move = noisy_moves->moves[i].move;
-        if (move == bestmove) continue;
+    // For all the noisy moves that didn't cause a cut-off, even is the bestMove wasn't a noisy move, decrease the capthist score
+    for (int i = 0; i < noisyMoves->count; i++) {
+        const int move = noisyMoves->moves[i].move;
+        if (move == bestMove) continue;
         updateCapthistScore(pos, sd, move, -bonus);
     }
 }
@@ -88,17 +84,14 @@ int GetHHScore(const S_Board* pos, const Search_data* sd, const int move) {
 
 // Returns the history score of a move
 int GetCHScore(const Search_data* sd, const Search_stack* ss, const int move) {
-    int score = 0;
-    const int previousMove = (ss - 1)->move;
-    const int previousPreviousMove = (ss - 2)->move;
-    const int previousPreviousPreviousPreviousMove = (ss - 4)->move;
-    if (previousMove)
-        score += sd->cont_hist[Piece(previousMove)][To(previousMove)][Piece(move)][To(move)];
-    if (previousPreviousMove)
-        score += sd->cont_hist[Piece(previousPreviousMove)][To(previousPreviousMove)][Piece(move)][To(move)];
-    if (previousPreviousPreviousPreviousMove)
-        score += sd->cont_hist[Piece(previousPreviousPreviousPreviousMove)][To(previousPreviousPreviousPreviousMove)][Piece(move)][To(move)];
-    return score;
+    return   GetSingleCHScore(sd, ss, move, 1)
+           + GetSingleCHScore(sd, ss, move, 2)
+           + GetSingleCHScore(sd, ss, move, 4);
+}
+
+int GetSingleCHScore(const Search_data* sd, const Search_stack* ss, const int move, const int offset) {
+    const int previousMove = (ss - offset)->move;
+    return previousMove ? sd->contHist[Piece(previousMove)][To(previousMove)][Piece(move)][To(move)] : 0;
 }
 
 // Returns the history score of a move
@@ -119,6 +112,6 @@ int GetHistoryScore(const S_Board* pos, const Search_data* sd, const int move, c
 // Resets the history tables
 void CleanHistories(Search_data* sd) {
     std::memset(sd->searchHistory, 0, sizeof(sd->searchHistory));
-    std::memset(sd->cont_hist, 0, sizeof(sd->cont_hist));
+    std::memset(sd->contHist, 0, sizeof(sd->contHist));
     std::memset(sd->captHist, 0, sizeof(sd->captHist));
 }

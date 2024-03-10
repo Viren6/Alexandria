@@ -152,13 +152,10 @@ void initializeLookupTables() {
     for (int sq1 = 0; sq1 <= 63; ++sq1) {
         for (int sq2 = 0; sq2 <= 63; ++sq2) {
             sqs = (1ULL << sq1) | (1ULL << sq2);
-            if (get_file[sq1] == get_file[sq2] || (get_rank[sq1] == get_rank[sq2]))
-                SQUARES_BETWEEN_BB[sq1][sq2] =
-                GetRookAttacks(sq1, sqs) & GetRookAttacks(sq2, sqs);
-            else if ((get_diagonal[sq1] == get_diagonal[sq2]) ||
-                (get_antidiagonal(sq1) == get_antidiagonal(sq2)))
-                SQUARES_BETWEEN_BB[sq1][sq2] =
-                GetBishopAttacks(sq1, sqs) & GetBishopAttacks(sq2, sqs);
+            if (get_file[sq1] == get_file[sq2] || get_rank[sq1] == get_rank[sq2])
+                SQUARES_BETWEEN_BB[sq1][sq2] = GetRookAttacks(sq1, sqs) & GetRookAttacks(sq2, sqs);
+            else if (get_diagonal[sq1] == get_diagonal[sq2] || get_antidiagonal(sq1) == get_antidiagonal(sq2))
+                SQUARES_BETWEEN_BB[sq1][sq2] = GetBishopAttacks(sq1, sqs) & GetBishopAttacks(sq2, sqs);
         }
     }
 }
@@ -215,11 +212,11 @@ void InitAll() {
 void InitNewGame(S_ThreadData* td) {
     // Extract data structures from ThreadData
     S_Board* pos = &td->pos;
-    Search_data* ss = &td->ss;
+    Search_data* sd = &td->sd;
     S_SearchINFO* info = &td->info;
     PvTable* pvTable = &td->pvTable;
 
-    CleanHistories(ss);
+    CleanHistories(sd);
 
     // Clean the Pv array
     for (int index = 0; index < MAXDEPTH + 1; ++index) {
@@ -232,7 +229,7 @@ void InitNewGame(S_ThreadData* td) {
     // Clean the Counter moves array
     for (int index = 0; index < Board_sq_num; ++index) {
         for (int index2 = 0; index2 < Board_sq_num; ++index2) {
-            ss->CounterMoves[index][index2] = NOMOVE;
+            sd->counterMoves[index][index2] = NOMOVE;
         }
     }
 

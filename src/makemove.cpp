@@ -1,12 +1,12 @@
+#include <iostream>
+#include "bitboard.h"
 #include "makemove.h"
 #include "ttable.h"
 #include "board.h"
 #include "hashkey.h"
 #include "init.h"
 #include "io.h"
-#include "makemove.h"
 #include "movegen.h"
-#include <iostream>
 
 // Remove a piece from a square
 void ClearPiece(const int piece, const int from, S_Board* pos) {
@@ -160,8 +160,8 @@ void MakeUCIMove(const int move, S_Board* pos) {
     pos->ChangeSide();
     // Xor the new side into the key
     HashKey(pos, SideKey);
-    // Speculative prefetch of the TT entry
-    pos->checkers = GetCheckersBB(pos, pos->side);
+    // Update pinmasks and checkers
+    UpdatePinsAndCheckers(pos, pos->side);
     // If we are in check get the squares between the checking piece and the king
     if (pos->checkers) {
         const int kingSquare = KingSQ(pos, pos->side);
@@ -170,9 +170,6 @@ void MakeUCIMove(const int move, S_Board* pos) {
     }
     else
         pos->checkMask = fullCheckmask;
-
-    // Update pinmasks
-    UpdatePinMasks(pos, pos->side);
 }
 
 // make move on chess board
@@ -273,7 +270,8 @@ void MakeMove(const int move, S_Board* pos) {
     pos->ChangeSide();
     // Xor the new side into the key
     HashKey(pos, SideKey);
-    pos->checkers = GetCheckersBB(pos, pos->side);
+    // Update pinmasks and checkers
+    UpdatePinsAndCheckers(pos, pos->side);
     // If we are in check get the squares between the checking piece and the king
     if (pos->checkers) {
         const int kingSquare = KingSQ(pos, pos->side);
@@ -282,8 +280,6 @@ void MakeMove(const int move, S_Board* pos) {
     }
     else
         pos->checkMask = fullCheckmask;
-    // Update pinmasks
-    UpdatePinMasks(pos, pos->side);
 }
 
 void UnmakeMove(const int move, S_Board* pos) {
@@ -322,7 +318,7 @@ void UnmakeMove(const int move, S_Board* pos) {
     // handle captures
     if (capture) {
         // Retrieve the captured piece we have to restore
-        const int piececap = enpass ? GetPiece(PAWN, pos->side) : pos->history[pos->hisPly].capture;
+        const int piececap = pos->history[pos->hisPly].capture;
         const int capturedPieceLocation = enpass ? targetSquare + SOUTH : targetSquare;
         AddPiece(piececap, capturedPieceLocation, pos);
     }
@@ -357,7 +353,6 @@ void UnmakeMove(const int move, S_Board* pos) {
         }
     }
 
-
     // change side
     pos->ChangeSide();
 
@@ -386,8 +381,8 @@ void MakeNullMove(S_Board* pos) {
 
     pos->ChangeSide();
     HashKey(pos, SideKey);
-    // Update pinmasks
-    UpdatePinMasks(pos, pos->side);
+    // Update pinmasks and checkers
+    UpdatePinsAndCheckers(pos, pos->side);
 }
 
 // Take back a null move

@@ -50,10 +50,10 @@ void ScoreMoves(Movepicker* mp) {
 }
 
 void partialInsertionSort(S_MOVELIST* moveList, const int moveNum) {
-    int bestScore = -2147483645;
+    int bestScore = moveList->moves[moveNum].score;
     int bestNum = moveNum;
     // starting at the number of the current move and stopping at the end of the list
-    for (int index = moveNum; index < moveList->count; ++index) {
+    for (int index = moveNum + 1; index < moveList->count; ++index) {
         // if we find a move with a better score than our bestmove we use that as the new best move
         if (moveList->moves[index].score > bestScore) {
             bestScore = moveList->moves[index].score;
@@ -71,14 +71,14 @@ void InitMP(Movepicker* mp, S_Board* pos, Search_data* sd, Search_stack* ss, con
     mp->pos = pos;
     mp->sd = sd;
     mp->ss = ss;
-    mp->ttMove = (!capturesOnly || isTactical(ttMove)) && IsLegal(pos, ttMove) ? ttMove : NOMOVE;
+    mp->ttMove = (!capturesOnly || isTactical(ttMove)) && IsPseudoLegal(pos, ttMove) ? ttMove : NOMOVE;
     mp->idx = 0;
     mp->stage = mp->ttMove ? PICK_TT : GEN_MOVES;
     mp->capturesOnly = capturesOnly;
     mp->SEEThreshold = SEEThreshold;
     mp->killer0 = ss->searchKillers[0];
     mp->killer1 = ss->searchKillers[1];
-    mp->counter = sd->CounterMoves[From((ss - 1)->move)][To((ss - 1)->move)];
+    mp->counter = sd->counterMoves[From((ss - 1)->move)][To((ss - 1)->move)];
 }
 
 int NextMove(Movepicker* mp, const bool skipNonGood) {

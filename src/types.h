@@ -1,8 +1,9 @@
 #pragma once
-
 #include <cstdint>
 
-#define NAME "Alexandria-6.0.12"
+#define NAME "Alexandria-6.0.14"
+
+#define start_position "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 // define bitboard data type
 using Bitboard = uint64_t;
@@ -43,7 +44,7 @@ constexpr int get_rank[64] = { 7, 7, 7, 7, 7, 7, 7, 7,
                                1, 1, 1, 1, 1, 1, 1, 1,
                                0, 0, 0, 0, 0, 0, 0, 0 };
 
-// extract rank from a square [square]
+// Lookup to get the file of a square
 constexpr int get_file[64] = { 0, 1, 2, 3, 4, 5, 6, 7,
                                0, 1, 2, 3, 4, 5, 6, 7,
                                0, 1, 2, 3, 4, 5, 6, 7,
@@ -105,7 +106,7 @@ constexpr int PieceType[12] = { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING,
 
 // Contains the material Values of the pieces
 constexpr int PieceValue[15] = { 100, 300, 300, 450, 900, 0,
-                      100, 300, 300, 450, 900, 0,0,0,0 };
+                                 100, 300, 300, 450, 900, 0, 0, 0, 0 };
 
 enum {
     queenPromotionScore = 2000000001,
