@@ -602,34 +602,35 @@ moves_loop:
         // increment nodes count
         info->nodes++;
         uint64_t nodesBeforeSearch = info->nodes;
+
+        // Get base reduction value
+        int depthReduction = reductions[isQuiet][depth][totalMoves];
+
+        // Fuck
+        if (cutNode)
+            depthReduction += 2;
+
+        // Reduce more if we are not improving
+        if (!improving)
+            depthReduction += 1;
+
+        // Reduce less if the move is a refutation
+        if (move == mp.killer0 || move == mp.killer1 || move == mp.counter)
+            depthReduction -= 1;
+
+        // Reduce less if we have been on the PV
+        if (ttPv)
+            depthReduction -= 1 + cutNode;
+
+        // Decrease the reduction for moves that give check
+        if (pos->checkers)
+            depthReduction -= 1;
+
+        // Decrease the reduction for moves that have a good history score and increase it for moves with a bad score
+        depthReduction -= moveHistory / 16384;
+
         // Conditions to consider LMR. Calculate how much we should reduce the search depth.
         if (totalMoves > 1 + pvNode && depth >= 3 && (isQuiet || !ttPv)) {
-
-            // Get base reduction value
-            int depthReduction = reductions[isQuiet][depth][totalMoves];
-
-            // Fuck
-            if (cutNode)
-                depthReduction += 2;
-
-            // Reduce more if we are not improving
-            if (!improving)
-                depthReduction += 1;
-
-            // Reduce less if the move is a refutation
-            if (move == mp.killer0 || move == mp.killer1 || move == mp.counter)
-                depthReduction -= 1;
-
-            // Reduce less if we have been on the PV
-            if (ttPv)
-                depthReduction -= 1 + cutNode;
-
-            // Decrease the reduction for moves that give check
-            if (pos->checkers)
-                depthReduction -= 1;
-
-            // Decrease the reduction for moves that have a good history score and increase it for moves with a bad score
-            depthReduction -= moveHistory / 16384;
 
             // adjust the reduction so that we can't drop into Qsearch and to prevent extensions
             depthReduction = std::clamp(depthReduction, 0, newDepth - 1);
@@ -655,7 +656,7 @@ moves_loop:
         }
         // If we skipped LMR and this isn't the first move of the node we'll search with a reduced window and full depth
         else if (!pvNode || totalMoves > 1) {
-            score = -Negamax<false>(-alpha - 1, -alpha, newDepth, !cutNode, td, ss + 1);
+            score = -Negamax<false>(-alpha - 1, -alpha, newDepth - (depthReduction > 3), !cutNode, td, ss + 1);
         }
 
         // PV Search: Search the first move and every move that beat alpha with full depth and a full window
